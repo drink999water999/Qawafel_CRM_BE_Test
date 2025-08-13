@@ -1,12 +1,8 @@
 {
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "missing": [
-        { "type": "path", "value": "/api/.*" },
-        { "type": "path", "value": "/.*\\..*" }
-      ],
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
