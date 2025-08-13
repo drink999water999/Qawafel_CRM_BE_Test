@@ -13,7 +13,6 @@ import { DealsPage } from './components/DealsPage.tsx';
 import { Page, Retailer, Vendor, Ticket, Proposal, Lead, Deal, DealStage, UserProfile, Activity } from './types.ts';
 import { LeadsPage } from './components/LeadsPage.tsx';
 import { LeadFormPage } from './components/LeadFormPage.tsx';
-import { db, populate } from './services/db.ts';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.Dashboard);
@@ -36,34 +35,44 @@ const App: React.FC = () => {
       return <LeadFormPage token={token} />;
   }
 
+  const mutateAPI = async (action: string, payload: any) => {
+    try {
+      const response = await fetch('/api/mutate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'API mutation failed');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to perform action ${action}:`, error);
+      throw error;
+    }
+  };
+
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
-      await populate(); // Populates DB on first run
+      const response = await fetch('/api/init');
+      if (!response.ok) {
+        throw new Error('Failed to initialize data from the server');
+      }
+      const data = await response.json();
 
-      const [
-          retailersData, vendorsData, ticketsData, proposalsData, leadsData, dealsData, activitiesData, userProfileData
-      ] = await Promise.all([
-          db.retailers.toArray(),
-          db.vendors.toArray(),
-          db.tickets.toArray(),
-          db.proposals.toArray(),
-          db.leads.toArray(),
-          db.deals.toArray(),
-          db.activities.toArray(),
-          db.userProfile.get(1)
-      ]);
+      setRetailers(data.retailers);
+      setVendors(data.vendors);
+      setTickets(data.tickets);
+      setProposals(data.proposals);
+      setLeads(data.leads);
+      setDeals(data.deals);
+      setActivities(data.activities.sort((a: Activity, b: Activity) => b.timestamp - a.timestamp));
+      if (data.userProfile) setUserProfile(data.userProfile);
 
-      setRetailers(retailersData);
-      setVendors(vendorsData);
-      setTickets(ticketsData);
-      setProposals(proposalsData);
-      setLeads(leadsData);
-      setDeals(dealsData);
-      setActivities(activitiesData.sort((a,b) => b.timestamp - a.timestamp));
-      if (userProfileData) setUserProfile(userProfileData);
     } catch (error) {
-        console.error("Failed to load CRM data from Dexie", error);
+        console.error("Failed to load CRM data from backend", error);
     } finally {
         setIsLoading(false);
     }
@@ -74,41 +83,26 @@ const App: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  const addRetailer = useCallback(async (retailer: Omit<Retailer, 'id'>) => {
-    await db.retailers.add(retailer as Retailer);
-    await loadData();
-  }, [loadData]);
+  const handleMutation = async (action: string, payload: any) => {
+    try {
+      await mutateAPI(action, payload);
+      await loadData();
+    } catch (error) {
+      // Error is already logged in mutateAPI
+    }
+  };
 
-  const updateRetailer = useCallback(async (updatedRetailer: Retailer) => {
-    await db.retailers.put(updatedRetailer);
-    await loadData();
-  }, [loadData]);
-
-  const addVendor = useCallback(async (vendor: Omit<Vendor, 'id'>) => {
-    await db.vendors.add(vendor as Vendor);
-    await loadData();
-  }, [loadData]);
-
-  const updateVendor = useCallback(async (updatedVendor: Vendor) => {
-    await db.vendors.put(updatedVendor);
-    await loadData();
-  }, [loadData]);
+  const addRetailer = useCallback((retailer: Omit<Retailer, 'id'>) => handleMutation('ADD_RETAILER', retailer), []);
+  const updateRetailer = useCallback((retailer: Retailer) => handleMutation('UPDATE_RETAILER', retailer), []);
+  const addVendor = useCallback((vendor: Omit<Vendor, 'id'>) => handleMutation('ADD_VENDOR', vendor), []);
+  const updateVendor = useCallback((vendor: Vendor) => handleMutation('UPDATE_VENDOR', vendor), []);
   
   const addLead = useCallback(async (lead: Omit<Lead, 'id'>) => {
     const leadWithToken = { ...lead, formToken: lead.formToken || crypto.randomUUID() };
-    await db.leads.add(leadWithToken as Lead);
-    await loadData();
-  }, [loadData]);
-
-  const updateLead = useCallback(async (updatedLead: Lead) => {
-    await db.leads.put(updatedLead);
-    await loadData();
-  }, [loadData]);
-
-  const deleteLead = useCallback(async (leadId: number) => {
-    await db.leads.delete(leadId);
-    await loadData();
-  }, [loadData]);
+    await handleMutation('ADD_LEAD', leadWithToken);
+  }, []);
+  const updateLead = useCallback((lead: Lead) => handleMutation('UPDATE_LEAD', lead), []);
+  const deleteLead = useCallback((leadId: number) => handleMutation('DELETE_LEAD', { id: leadId }), []);
 
   const addTicket = useCallback(async (ticket: Omit<Ticket, 'id' | 'status' | 'createdAt'>) => {
     const newTicket = {
@@ -116,60 +110,25 @@ const App: React.FC = () => {
       status: 'Open',
       createdAt: new Date().toISOString().split('T')[0]
     };
-    await db.tickets.add(newTicket as Ticket);
-    await loadData();
-  }, [loadData]);
+    await handleMutation('ADD_TICKET', newTicket);
+  }, []);
+  const updateTicket = useCallback((ticket: Ticket) => handleMutation('UPDATE_TICKET', ticket), []);
 
-  const updateTicket = useCallback(async (updatedTicket: Ticket) => {
-    await db.tickets.put(updatedTicket);
-    await loadData();
-  }, [loadData]);
-
-  const addProposal = useCallback(async (proposal: Omit<Proposal, 'id'>) => {
-    await db.proposals.add(proposal as Proposal);
-    await loadData();
-  }, [loadData]);
-
-  const updateProposal = useCallback(async (updatedProposal: Proposal) => {
-    await db.proposals.put(updatedProposal);
-    await loadData();
-  }, [loadData]);
-
-  const deleteProposal = useCallback(async (proposalId: number) => {
-    await db.proposals.delete(proposalId);
-    await loadData();
-  }, [loadData]);
+  const addProposal = useCallback((proposal: Omit<Proposal, 'id'>) => handleMutation('ADD_PROPOSAL', proposal), []);
+  const updateProposal = useCallback((proposal: Proposal) => handleMutation('UPDATE_PROPOSAL', proposal), []);
+  const deleteProposal = useCallback((proposalId: number) => handleMutation('DELETE_PROPOSAL', { id: proposalId }), []);
   
-  const addDeal = useCallback(async (deal: Omit<Deal, 'id'>) => {
-    await db.deals.add(deal as Deal);
-    await loadData();
-  }, [loadData]);
-
-  const updateDeal = useCallback(async (updatedDeal: Deal) => {
-    await db.deals.put(updatedDeal);
-    await loadData();
-  }, [loadData]);
-
-  const deleteDeal = useCallback(async (dealId: number) => {
-    await db.deals.delete(dealId);
-    await loadData();
-  }, [loadData]);
-
-  const handleUpdateDealStage = useCallback(async (dealId: number, newStage: DealStage) => {
-    await db.deals.update(dealId, { stage: newStage });
-    await loadData();
-  }, [loadData]);
+  const addDeal = useCallback((deal: Omit<Deal, 'id'>) => handleMutation('ADD_DEAL', deal), []);
+  const updateDeal = useCallback((deal: Deal) => handleMutation('UPDATE_DEAL', deal), []);
+  const deleteDeal = useCallback((dealId: number) => handleMutation('DELETE_DEAL', { id: dealId }), []);
+  const handleUpdateDealStage = useCallback((dealId: number, newStage: DealStage) => handleMutation('UPDATE_DEAL_STAGE', { id: dealId, stage: newStage }), []);
 
   const handleUpdateProfile = useCallback(async (profile: UserProfile) => {
     if(!profile.id) return;
-    await db.userProfile.put(profile);
-    setUserProfile(profile);
+    await handleMutation('UPDATE_PROFILE', profile);
   }, []);
 
-  const addActivity = useCallback(async (activity: Omit<Activity, 'id'>) => {
-    await db.activities.add(activity as Activity);
-    await loadData();
-  }, [loadData]);
+  const addActivity = useCallback((activity: Omit<Activity, 'id'>) => handleMutation('ADD_ACTIVITY', activity), []);
   
   if (isLoading) {
     return (

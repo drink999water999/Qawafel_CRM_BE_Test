@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-import { db } from '../services/db.ts';
 import { Lead } from '../types.ts';
 
 interface LeadFormPageProps {
@@ -21,7 +20,16 @@ export const LeadFormPage: React.FC<LeadFormPageProps> = ({ token }) => {
                 return;
             }
             try {
-                const foundLead = await db.leads.where('formToken').equals(token).first();
+                const response = await fetch(`/api/get-lead-by-token?token=${token}`);
+                if (response.status === 404) {
+                    setLead(null);
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Failed to fetch lead');
+                }
+                const foundLead = await response.json();
+
                 setLead(foundLead || null);
                 if (foundLead) {
                     setFormData({
@@ -30,7 +38,7 @@ export const LeadFormPage: React.FC<LeadFormPageProps> = ({ token }) => {
                     });
                 }
             } catch (e) {
-                console.error("Error fetching lead from Dexie", e);
+                console.error("Error fetching lead from API", e);
                 setError("Could not load form data.");
                 setLead(null);
             }
@@ -49,15 +57,25 @@ export const LeadFormPage: React.FC<LeadFormPageProps> = ({ token }) => {
             setIsSubmitting(true);
             setError('');
             try {
-                const updatedLead: Lead = {
-                    ...lead,
+                 const payload = {
+                    token: lead.formToken,
                     businessSize: formData.businessSize,
                     numberOfBranches: formData.numberOfBranches ? parseInt(formData.numberOfBranches, 10) : undefined,
                 };
-                await db.leads.put(updatedLead);
+
+                const response = await fetch('/api/update-lead-from-form', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update lead');
+                }
+                
                 setIsSubmitted(true);
             } catch (e) {
-                console.error("Error updating lead in Dexie", e);
+                console.error("Error updating lead via API", e);
                 setError("Could not submit your data. Please try again.");
             } finally {
                 setIsSubmitting(false);
