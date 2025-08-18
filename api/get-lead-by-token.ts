@@ -1,5 +1,4 @@
-
-import { sql } from '@vercel/postgres';
+import db from '../services/db.ts';
 import { snakeToCamelCase } from './db-utils.ts';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -11,7 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const { rows } = await sql`SELECT * FROM leads WHERE form_token = ${token}`;
+        const rows = await db.execO(`SELECT * FROM leads WHERE form_token = ?`, [token]);
 
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Lead not found' });

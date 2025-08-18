@@ -1,5 +1,4 @@
-
-import { sql } from '@vercel/postgres';
+import db from '../services/db.ts';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -14,13 +13,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const result = await sql`
-            UPDATE leads 
-            SET business_size = ${businessSize}, number_of_branches = ${numberOfBranches}
-            WHERE form_token = ${token}
-        `;
+        await db.exec(
+            `UPDATE leads SET business_size = ?, number_of_branches = ? WHERE form_token = ?`,
+            [businessSize, numberOfBranches, token]
+        );
         
-        if (result.rowCount === 0) {
+        if (db.changes === 0) {
             return res.status(404).json({ error: 'Lead not found for the given token.' });
         }
 
