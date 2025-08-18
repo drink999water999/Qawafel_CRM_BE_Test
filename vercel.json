@@ -1,11 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
-      "missing": [
-        { "type": "path", "value": "/api/.*" },
-        { "type": "path", "value": "/.*\\..*" }
-      ],
+      "source": "/((?!api/|.*\\.).*)",
       "destination": "/index.html"
     }
   ]
